@@ -3,7 +3,7 @@ package com.example.wirelessharvester.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class SignalType { WIFI, BLE }
+enum class SignalType { WIFI, BLE, CELLULAR }
 
 data class GpsCoordinate(
     val latitude: Double,
@@ -21,14 +21,33 @@ data class GpsCoordinate(
     }
 }
 
+/**
+ * Representasi terpadu untuk semua jenis sinyal (Wi-Fi, Bluetooth LE, & Seluler BTS)
+ * sehingga siap diumpankan ke Model Machine Learning On-Device.
+ */
 data class WirelessSignal(
     val type: SignalType,
-    val ssid: String?,           // Nama jaringan (SSID Wi-Fi atau Nama Perangkat BLE)
-    val bssid: String,           // MAC Address / Device Address
-    val rssi: Int,               // Sinyal mentah dalam dBm (-100 s/d 0)
-    val frequencyMhz: Int?,      // Frekuensi khusus Wi-Fi (misal: 2412, 5180), null untuk BLE
+    val ssid: String?,           // Wi-Fi SSID, BLE Device Name, atau Operator Seluler (e.g. "Telkomsel")
+    val bssid: String,           // Wi-Fi BSSID (MAC), BLE Address, atau Cell Key (MCC-MNC-TAC-CI)
+    val rssi: Int,               // Signal level dalam dBm (dBm mentah / RSRP)
+    val frequencyMhz: Int?,      // Frekuensi MHz (Wi-Fi / ARFCN / EARFCN)
     val timestampMs: Long,
-    val location: GpsCoordinate?
+    val location: GpsCoordinate?,
+
+    // Metadata spesifik Jaringan Seluler (Telephony)
+    val connectionStatus: String? = null, // "Registered" (Serving Cell) atau "Unregistered" (Neighboring Cell)
+    val radioType: String? = null,        // "LTE", "NR_5G", "GSM", "WCDMA"
+    val cellId: Long? = null,             // Cell Identity (CI / CID / NCI)
+    val tacOrLac: Int? = null,            // Tracking Area Code (TAC) atau Location Area Code (LAC)
+    val mcc: String? = null,              // Mobile Country Code
+    val mnc: String? = null,              // Mobile Network Code
+    val pci: Int? = null,                 // Physical Cell ID
+    val rsrp: Int? = null,                // LTE RSRP (dBm)
+    val rsrq: Int? = null,                // LTE RSRQ (dB)
+    val cqi: Int? = null,                 // LTE Channel Quality Indicator (CQI)
+    val ssRsrp: Int? = null,              // 5G SS-RSRP (dBm)
+    val ssRsrq: Int? = null,              // 5G SS-RSRQ (dB)
+    val ssSinr: Int? = null               // 5G SS-SINR (dB)
 ) {
     fun toJsonObject(): JSONObject = JSONObject().apply {
         put("type", type.name)
@@ -38,6 +57,24 @@ data class WirelessSignal(
         put("frequency", frequencyMhz ?: -1)
         put("timestamp", timestampMs)
         put("location", location?.toJsonObject() ?: JSONObject.NULL)
+
+        if (type == SignalType.CELLULAR) {
+            put("cell_details", JSONObject().apply {
+                put("status", connectionStatus ?: "Unregistered")
+                put("radio_type", radioType ?: "UNKNOWN")
+                put("cell_id", cellId ?: -1L)
+                put("tac_or_lac", tacOrLac ?: -1)
+                put("mcc", mcc ?: "")
+                put("mnc", mnc ?: "")
+                put("pci", pci ?: -1)
+                put("rsrp", rsrp ?: -999)
+                put("rsrq", rsrq ?: -999)
+                put("cqi", cqi ?: -1)
+                put("ss_rsrp", ssRsrp ?: -999)
+                put("ss_rsrq", ssRsrq ?: -999)
+                put("ss_sinr", ssSinr ?: -999)
+            })
+        }
     }
 }
 
@@ -64,8 +101,8 @@ data class WirelessSnapshot(
      * Mengubah data snapshot menjadi feature vector float 1D ternormalisasi
      * untuk model On-Device Machine Learning (TFLite / ONNX Runtime).
      *
-     * @param featureBssids Kamus/dimensi BSSID yang dikenal oleh model
-     * @param defaultMissingRssi Nilai default untuk BSSID yang tidak terlihat (-100 dBm)
+     * @param featureBssids Kamus/dimensi identifier (BSSID / Cell Key) yang dikenal oleh model
+     * @param defaultMissingRssi Nilai default untuk sinyal yang tidak terlihat (-100 dBm)
      */
     fun toNormalizedRssiVector(
         featureBssids: List<String>,

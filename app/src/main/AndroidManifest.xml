@@ -2,9 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Location Permissions for GPS & Wi-Fi/BLE positioning -->
+    <!-- Location Permissions for GPS & Wi-Fi/BLE/Cellular positioning -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Telephony / Cellular Network Permissions -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <!-- Wi-Fi Permissions -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

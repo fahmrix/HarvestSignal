@@ -190,11 +190,17 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
         Toast.makeText(this, "Tensor FloatArray siap untuk model ML!", Toast.LENGTH_SHORT).show()
     }
 
-    override fun onSignalCaptured(signal: WirelessSignal, totalWifi: Int, totalBle: Int) {
-        tvSignalCounter.text = "Sinyal Aktif: Wi-Fi: $totalWifi | BLE: $totalBle | Total: ${totalWifi + totalBle}"
+    override fun onSignalCaptured(signal: WirelessSignal, totalWifi: Int, totalBle: Int, totalCellular: Int) {
+        tvSignalCounter.text = "Sinyal: Wi-Fi: $totalWifi | BLE: $totalBle | BTS: $totalCellular | Total: ${totalWifi + totalBle + totalCellular}"
         val time = timeFormat.format(Date(signal.timestampMs))
         val locStr = signal.location?.let { String.format(Locale.US, " (Lat: %.5f, Lng: %.5f)", it.latitude, it.longitude) } ?: ""
-        val info = "[$time] [${signal.type}] ${signal.ssid ?: "<hidden>"} | ${signal.bssid} | ${signal.rssi} dBm$locStr"
+
+        val info = if (signal.type == com.example.wirelessharvester.data.SignalType.CELLULAR) {
+            val cellDetail = "[${signal.radioType}] [${signal.connectionStatus}] CI:${signal.cellId ?: "N/A"} TAC:${signal.tacOrLac ?: "N/A"} | RSRP:${signal.rsrp ?: signal.ssRsrp ?: signal.rssi}dBm"
+            "[$time] [BTS] ${signal.ssid} | $cellDetail$locStr"
+        } else {
+            "[$time] [${signal.type}] ${signal.ssid ?: "<hidden>"} | ${signal.bssid} | ${signal.rssi} dBm$locStr"
+        }
         appendLog(info)
     }
 

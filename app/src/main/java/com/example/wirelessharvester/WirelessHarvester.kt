@@ -14,9 +14,15 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.telephony.CellInfo
+import android.telephony.CellInfoGsm
+import android.telephony.CellInfoLte
+import android.telephony.CellInfoWcdma
+import android.telephony.TelephonyManager
 import android.util.Log
 import com.example.wirelessharvester.data.*
 import com.example.wirelessharvester.utils.HarvesterPermissions
@@ -27,14 +33,14 @@ class WirelessHarvester(private val context: Context) {
 
     companion object {
         private const val TAG = "WirelessHarvester"
-        // Interval pemindaian Wi-Fi berkelanjutan (aktif bila throttling dimatikan di Developer Options)
-        private const val WIFI_SCAN_LOOP_INTERVAL_MS = 2000L
+        // Interval pemindaian kontinu (aktif jika Wi-Fi throttling dimatikan di Developer Options)
+        private const val HARVEST_LOOP_INTERVAL_MS = 2000L
         private const val GPS_MIN_TIME_MS = 1000L
         private const val GPS_MIN_DISTANCE_M = 0f
     }
 
     interface HarvesterListener {
-        fun onSignalCaptured(signal: WirelessSignal, totalWifi: Int, totalBle: Int)
+        fun onSignalCaptured(signal: WirelessSignal, totalWifi: Int, totalBle: Int, totalCellular: Int)
         fun onLocationUpdated(gps: GpsCoordinate)
     }
 
@@ -44,25 +50,25 @@ class WirelessHarvester(private val context: Context) {
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    private val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
     @Volatile
     private var isHarvesting = false
 
-    // Real-time signals cache (BSSID -> WirelessSignal)
+    // Real-time signals cache (Key -> WirelessSignal)
     private val activeSignals = ConcurrentHashMap<String, WirelessSignal>()
     private val historicalSnapshots = CopyOnWriteArrayList<WirelessSnapshot>()
     private var lastKnownGps: GpsCoordinate? = null
 
-    // Handler untuk loop pemindaian Wi-Fi secara kontinu
+    // Handler untuk loop pemindaian kontinu (Wi-Fi & Jaringan Seluler)
     private val scanLoopHandler = Handler(Looper.getMainLooper())
-    private val wifiLoopRunnable = object : Runnable {
+    private val harvestLoopRunnable = object : Runnable {
         @SuppressLint("MissingPermission")
         override fun run() {
             if (!isHarvesting) return
+
+            // 1. Trigger Wi-Fi Scanning
             try {
-                // Di Android 9 (API 28)+, pemanggilan startScan() dibatasi 4x per 2 menit untuk foreground app.
-                // Jika opsi "Wi-Fi scan throttling" dimatikan di Developer Options,
-                // pemanggilan per 2 detik ini akan selalu diizinkan oleh OS.
                 val initiated = wifiManager.startScan()
                 if (!initiated) {
                     Log.w(TAG, "Wi-Fi startScan() ditolak/dibatasi oleh framework Android.")
@@ -70,7 +76,15 @@ class WirelessHarvester(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Gagal memicu Wi-Fi scan: ${e.message}")
             }
-            scanLoopHandler.postDelayed(this, WIFI_SCAN_LOOP_INTERVAL_MS)
+
+            // 2. Trigger Telephony BTS Scanning (Serving & Neighboring Cells)
+            try {
+                harvestCellularInfo()
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal memanen Telephony CellInfo: ${e.message}")
+            }
+
+            scanLoopHandler.postDelayed(this, HARVEST_LOOP_INTERVAL_MS)
         }
     }
 
@@ -158,18 +172,183 @@ class WirelessHarvester(private val context: Context) {
         override fun onProviderDisabled(provider: String) {}
     }
 
+    // --- Telephony / Cellular Harvesting Logic ---
+    @SuppressLint("MissingPermission")
+    private fun harvestCellularInfo() {
+        val cellInfoList: List<CellInfo>? = telephonyManager.allCellInfo
+        if (cellInfoList.isNullOrEmpty()) return
+
+        val now = System.currentTimeMillis()
+        val operatorName = telephonyManager.networkOperatorName.ifEmpty { "Cellular" }
+
+        for (cell in cellInfoList) {
+            val signal = parseCellInfo(cell, now, operatorName) ?: continue
+            activeSignals[signal.bssid] = signal
+            notifySignalCaptured(signal)
+        }
+    }
+
+    @SuppressLint("NewApi")
+    private fun parseCellInfo(cell: CellInfo, timestampMs: Long, operatorName: String): WirelessSignal? {
+        val isRegistered = cell.isRegistered
+        val statusStr = if (isRegistered) "Registered" else "Unregistered"
+
+        return when {
+            // 4G LTE
+            cell is CellInfoLte -> {
+                val identity = cell.cellIdentity
+                val strength = cell.cellSignalStrength
+                val mcc = identity.mccString ?: identity.mcc.takeIf { it != Int.MAX_VALUE }?.toString()
+                val mnc = identity.mncString ?: identity.mnc.takeIf { it != Int.MAX_VALUE }?.toString()
+                val ci = identity.ci.toLong().takeIf { it != Int.MAX_VALUE.toLong() && it != -1L }
+                val tac = identity.tac.takeIf { it != Int.MAX_VALUE && it != -1 }
+                val pci = identity.pci.takeIf { it != Int.MAX_VALUE && it != -1 }
+                val rsrp = strength.rsrp.takeIf { it != Int.MAX_VALUE }
+                val rsrq = strength.rsrq.takeIf { it != Int.MAX_VALUE }
+                val cqi = strength.cqi.takeIf { it != Int.MAX_VALUE }
+                val earfcn = identity.earfcn.takeIf { it != Int.MAX_VALUE }
+                val dbm = strength.dbm
+
+                val cellKey = "LTE_${mcc ?: "000"}_${mnc ?: "00"}_${tac ?: 0}_${ci ?: pci ?: cell.hashCode()}"
+
+                WirelessSignal(
+                    type = SignalType.CELLULAR,
+                    ssid = "$operatorName (LTE)",
+                    bssid = cellKey,
+                    rssi = dbm,
+                    frequencyMhz = earfcn,
+                    timestampMs = timestampMs,
+                    location = lastKnownGps,
+                    connectionStatus = statusStr,
+                    radioType = "LTE",
+                    cellId = ci,
+                    tacOrLac = tac,
+                    mcc = mcc,
+                    mnc = mnc,
+                    pci = pci,
+                    rsrp = rsrp,
+                    rsrq = rsrq,
+                    cqi = cqi
+                )
+            }
+
+            // 5G NR (New Radio) - Android 10+ (API 29+)
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && cell is android.telephony.CellInfoNr -> {
+                val identity = cell.cellIdentity as? android.telephony.CellIdentityNr
+                val strength = cell.cellSignalStrength as? android.telephony.CellSignalStrengthNr
+                val mcc = identity?.mccString
+                val mnc = identity?.mncString
+                val nci = identity?.nci?.takeIf { it != CellInfo.UNAVAILABLE_LONG && it != -1L }
+                val tac = identity?.tac?.takeIf { it != CellInfo.UNAVAILABLE && it != -1 }
+                val pci = identity?.pci?.takeIf { it != CellInfo.UNAVAILABLE && it != -1 }
+                val ssRsrp = strength?.ssRsrp?.takeIf { it != CellInfo.UNAVAILABLE }
+                val ssRsrq = strength?.ssRsrq?.takeIf { it != CellInfo.UNAVAILABLE }
+                val ssSinr = strength?.ssSinr?.takeIf { it != CellInfo.UNAVAILABLE }
+                val nrarfcn = identity?.nrarfcn?.takeIf { it != CellInfo.UNAVAILABLE }
+                val dbm = strength?.dbm ?: ssRsrp ?: -999
+
+                val cellKey = "NR5G_${mcc ?: "000"}_${mnc ?: "00"}_${tac ?: 0}_${nci ?: pci ?: cell.hashCode()}"
+
+                WirelessSignal(
+                    type = SignalType.CELLULAR,
+                    ssid = "$operatorName (5G NR)",
+                    bssid = cellKey,
+                    rssi = dbm,
+                    frequencyMhz = nrarfcn,
+                    timestampMs = timestampMs,
+                    location = lastKnownGps,
+                    connectionStatus = statusStr,
+                    radioType = "NR_5G",
+                    cellId = nci,
+                    tacOrLac = tac,
+                    mcc = mcc,
+                    mnc = mnc,
+                    pci = pci,
+                    ssRsrp = ssRsrp,
+                    ssRsrq = ssRsrq,
+                    ssSinr = ssSinr
+                )
+            }
+
+            // 2G GSM
+            cell is CellInfoGsm -> {
+                val identity = cell.cellIdentity
+                val strength = cell.cellSignalStrength
+                val mcc = identity.mccString ?: identity.mcc.takeIf { it != Int.MAX_VALUE }?.toString()
+                val mnc = identity.mncString ?: identity.mnc.takeIf { it != Int.MAX_VALUE }?.toString()
+                val cid = identity.cid.toLong().takeIf { it != Int.MAX_VALUE.toLong() && it != -1L }
+                val lac = identity.lac.takeIf { it != Int.MAX_VALUE && it != -1 }
+                val arfcn = identity.arfcn.takeIf { it != Int.MAX_VALUE }
+                val dbm = strength.dbm
+
+                val cellKey = "GSM_${mcc ?: "000"}_${mnc ?: "00"}_${lac ?: 0}_${cid ?: cell.hashCode()}"
+
+                WirelessSignal(
+                    type = SignalType.CELLULAR,
+                    ssid = "$operatorName (GSM)",
+                    bssid = cellKey,
+                    rssi = dbm,
+                    frequencyMhz = arfcn,
+                    timestampMs = timestampMs,
+                    location = lastKnownGps,
+                    connectionStatus = statusStr,
+                    radioType = "GSM",
+                    cellId = cid,
+                    tacOrLac = lac,
+                    mcc = mcc,
+                    mnc = mnc
+                )
+            }
+
+            // 3G WCDMA
+            cell is CellInfoWcdma -> {
+                val identity = cell.cellIdentity
+                val strength = cell.cellSignalStrength
+                val mcc = identity.mccString ?: identity.mcc.takeIf { it != Int.MAX_VALUE }?.toString()
+                val mnc = identity.mncString ?: identity.mnc.takeIf { it != Int.MAX_VALUE }?.toString()
+                val cid = identity.cid.toLong().takeIf { it != Int.MAX_VALUE.toLong() && it != -1L }
+                val lac = identity.lac.takeIf { it != Int.MAX_VALUE && it != -1 }
+                val uarfcn = identity.uarfcn.takeIf { it != Int.MAX_VALUE }
+                val psc = identity.psc.takeIf { it != Int.MAX_VALUE && it != -1 }
+                val dbm = strength.dbm
+
+                val cellKey = "WCDMA_${mcc ?: "000"}_${mnc ?: "00"}_${lac ?: 0}_${cid ?: psc ?: cell.hashCode()}"
+
+                WirelessSignal(
+                    type = SignalType.CELLULAR,
+                    ssid = "$operatorName (WCDMA)",
+                    bssid = cellKey,
+                    rssi = dbm,
+                    frequencyMhz = uarfcn,
+                    timestampMs = timestampMs,
+                    location = lastKnownGps,
+                    connectionStatus = statusStr,
+                    radioType = "WCDMA",
+                    cellId = cid,
+                    tacOrLac = lac,
+                    mcc = mcc,
+                    mnc = mnc,
+                    pci = psc
+                )
+            }
+
+            else -> null
+        }
+    }
+
     private fun notifySignalCaptured(signal: WirelessSignal) {
         val totalWifi = activeSignals.values.count { it.type == SignalType.WIFI }
         val totalBle = activeSignals.values.count { it.type == SignalType.BLE }
+        val totalCellular = activeSignals.values.count { it.type == SignalType.CELLULAR }
         Handler(Looper.getMainLooper()).post {
-            listener?.onSignalCaptured(signal, totalWifi, totalBle)
+            listener?.onSignalCaptured(signal, totalWifi, totalBle, totalCellular)
         }
     }
 
     // --- Public Methods ---
 
     /**
-     * Memulai pemanenan sinyal nirkabel dan lokasi secara kontinu.
+     * Memulai pemanenan sinyal nirkabel (Wi-Fi, BLE, Telephony) dan lokasi secara kontinu.
      */
     @SuppressLint("MissingPermission")
     @Throws(SecurityException::class)
@@ -207,10 +386,10 @@ class WirelessHarvester(private val context: Context) {
             Log.e(TAG, "Gagal mengaktifkan LocationManager: ${e.message}")
         }
 
-        // 2. Mendaftarkan Wi-Fi Broadcast Receiver & Memulai Looper
+        // 2. Mendaftarkan Wi-Fi Broadcast Receiver & Memulai Loop Pemanenan (Wi-Fi + BTS)
         val filter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
         context.registerReceiver(wifiScanReceiver, filter)
-        scanLoopHandler.post(wifiLoopRunnable)
+        scanLoopHandler.post(harvestLoopRunnable)
 
         // 3. Memulai BLE Continuous Scan dengan Low Latency
         val bleScanner = bluetoothAdapter?.bluetoothLeScanner
@@ -226,7 +405,7 @@ class WirelessHarvester(private val context: Context) {
             Log.w(TAG, "Bluetooth tidak aktif atau perangkat tidak mendukung BLE.")
         }
 
-        Log.i(TAG, "Continuous Wireless Harvester berhasil dijalankan.")
+        Log.i(TAG, "Continuous Wireless & Telephony Harvester berhasil dijalankan.")
     }
 
     /**
@@ -237,8 +416,8 @@ class WirelessHarvester(private val context: Context) {
         if (!isHarvesting) return
         isHarvesting = false
 
-        // Hentikan Wi-Fi Looper & unregister receiver
-        scanLoopHandler.removeCallbacks(wifiLoopRunnable)
+        // Hentikan Loop & unregister Wi-Fi receiver
+        scanLoopHandler.removeCallbacks(harvestLoopRunnable)
         try {
             context.unregisterReceiver(wifiScanReceiver)
         } catch (e: IllegalArgumentException) {
@@ -253,7 +432,7 @@ class WirelessHarvester(private val context: Context) {
         // Hentikan GPS updates
         locationManager.removeUpdates(gpsListener)
 
-        Log.i(TAG, "Continuous Wireless Harvester dihentikan.")
+        Log.i(TAG, "Continuous Wireless & Telephony Harvester dihentikan.")
     }
 
     /**
@@ -283,10 +462,11 @@ class WirelessHarvester(private val context: Context) {
 
     fun getHistoricalSnapshots(): List<WirelessSnapshot> = historicalSnapshots.toList()
 
-    fun getActiveSignalsCount(): Pair<Int, Int> {
+    fun getActiveSignalsCount(): Triple<Int, Int, Int> {
         val wifiCount = activeSignals.values.count { it.type == SignalType.WIFI }
         val bleCount = activeSignals.values.count { it.type == SignalType.BLE }
-        return Pair(wifiCount, bleCount)
+        val cellCount = activeSignals.values.count { it.type == SignalType.CELLULAR }
+        return Triple(wifiCount, bleCount, cellCount)
     }
 
     fun clearHistory() {
