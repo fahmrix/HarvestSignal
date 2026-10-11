@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Wireless Harvester</string>
+    <string name="btn_start">Mulai Scanning</string>
+    <string name="btn_stop">Hentikan Scanning</string>
+    <string name="btn_export_json">Export JSON</string>
+    <string name="btn_feed_ml">Siapkan Vector ML</string>
+    <string name="status_idle">Status: Siaga (Idle)</string>
+    <string name="status_harvesting">Status: Memanen Data Sinyal Aktif...</string>
+    <string name="gps_placeholder">GPS: Menunggu sinyal satelit...</string>
+</resources>
