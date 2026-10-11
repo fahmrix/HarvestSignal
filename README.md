@@ -21,8 +21,14 @@ Dalam dunia keamanan siber, aplikasi taktis seperti ini sering disebut sebagai *
 4. **On-Device Machine Learning Pipeline Ready**:
    - Struktur data JSON seragam di mana semua sinyal berbagi timestamp dan koordinat GPS yang sama per snapshot.
    - Fungsi konversi otomatis ke 1D FloatArray Feature Vector (`toNormalizedRssiVector`) dengan min-max scaling (-100 dBm s/d 0 dBm $\rightarrow$ 0.0 s/d 1.0).
-5. **Ekspor & Berbagi File (Share Sheet)**:
-   - Simpan dataset hasil panen langsung ke file `.json` dengan `FileProvider` dan bagikan langsung lewat WhatsApp, Google Drive, Telegram, Email, atau Bluetooth.
+5. **Pencatatan Data Mentah & Ekspor Terpadu (CSV & JSON)**:
+   - **Format Kolom CSV Terpadu**:
+     `Timestamp,Latitude,Longitude,GPS_Accuracy,Signal_Type,Device_ID,Device_Name,Signal_Strength`
+     - `Signal_Type`: `WiFi`, `BLE`, atau `BTS`
+     - `Device_ID`: MAC Address (Wi-Fi), BLE Address, atau Cell Identity (CID/CI/NCI)
+     - `Device_Name`: SSID Wi-Fi, Nama Beacon BLE, atau Nama Operator Seluler
+     - `Signal_Strength`: RSSI / RSRP dalam dBm
+   - Simpan dataset hasil panen langsung ke file `.csv` atau `.json` di penyimpanan lokal ponsel dan bagikan via Share Sheet bawaan ponsel (WhatsApp, Google Drive, Email, Bluetooth, dll).
 6. **Penanganan Izin Runtime Lengkap**:
    - Kompatibel dari Android 8.0 (API 26) hingga Android 14+ (API 34): `READ_PHONE_STATE`, `ACCESS_FINE_LOCATION`, `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, dan `ACCESS_WIFI_STATE`.
 7. **Automated GitHub Actions CI/CD**:

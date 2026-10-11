@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
     private lateinit var btnExportJson: Button
     private lateinit var btnProcessMl: Button
     private lateinit var btnShareFile: Button
+    private lateinit var btnShareCsv: Button
 
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
@@ -41,7 +42,7 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
     ) { permissionsMap ->
         val allGranted = permissionsMap.entries.all { it.value }
         if (allGranted) {
-            appendLog("[Izin Diberikan] Semua izin lokasi dan nirkabel disetujui.")
+            appendLog("[Izin Diberikan] Semua izin lokasi, seluler, dan nirkabel disetujui.")
             startHarvestingProcess()
         } else {
             val rejected = permissionsMap.filter { !it.value }.keys.joinToString(", ")
@@ -82,6 +83,10 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
         btnShareFile.setOnClickListener {
             saveAndShareFile()
         }
+
+        btnShareCsv.setOnClickListener {
+            saveAndShareCsv()
+        }
     }
 
     private fun initViews() {
@@ -95,6 +100,7 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
         btnExportJson = findViewById(R.id.btnExportJson)
         btnProcessMl = findViewById(R.id.btnProcessMl)
         btnShareFile = findViewById(R.id.btnShareFile)
+        btnShareCsv = findViewById(R.id.btnShareCsv)
     }
 
     private fun saveAndShareFile() {
@@ -138,6 +144,50 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
         } catch (e: Exception) {
             appendLog("[Error Share] Gagal menyimpan/membagikan file: ${e.message}")
             Toast.makeText(this, "Gagal membagikan: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun saveAndShareCsv() {
+        val snapshot = harvester.captureCurrentSnapshot()
+        if (snapshot.signals.isEmpty()) {
+            appendLog("[CSV Warning] Belum ada data sinyal untuk disimpan. Lakukan scan terlebih dahulu.")
+            Toast.makeText(this, "Belum ada data untuk dibagikan!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val csvString = snapshot.toCsv(includeHeader = true)
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val fileName = "wireless_harvest_$timeStamp.csv"
+
+        try {
+            val exportDir = File(cacheDir, "exports")
+            if (!exportDir.exists()) exportDir.mkdirs()
+
+            val csvFile = File(exportDir, fileName)
+            csvFile.writeText(csvString)
+
+            val fileUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.provider",
+                csvFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, fileUri)
+                putExtra(Intent.EXTRA_SUBJECT, "Dataset Sinyal Nirkabel CSV ($fileName)")
+                putExtra(
+                    Intent.EXTRA_TEXT,
+                    "Dataset nirkabel hybrid CSV (${snapshot.signals.size} sinyal terdeteksi).\nWaktu: $timeStamp\nKolom: Timestamp,Latitude,Longitude,GPS_Accuracy,Signal_Type,Device_ID,Device_Name,Signal_Strength"
+                )
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            appendLog("[File CSV Tersimpan] ${csvFile.absolutePath} (${csvFile.length()} bytes)")
+            startActivity(Intent.createChooser(shareIntent, "Bagikan Dataset CSV via..."))
+        } catch (e: Exception) {
+            appendLog("[Error Share CSV] Gagal menyimpan/membagikan: ${e.message}")
+            Toast.makeText(this, "Gagal membagikan CSV: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 

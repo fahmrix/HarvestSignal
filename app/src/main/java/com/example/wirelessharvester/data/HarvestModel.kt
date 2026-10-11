@@ -2,6 +2,7 @@ package com.example.wirelessharvester.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 enum class SignalType { WIFI, BLE, CELLULAR }
 
@@ -23,7 +24,7 @@ data class GpsCoordinate(
 
 /**
  * Representasi terpadu untuk semua jenis sinyal (Wi-Fi, Bluetooth LE, & Seluler BTS)
- * sehingga siap diumpankan ke Model Machine Learning On-Device.
+ * sehingga siap diumpankan ke File CSV maupun Model Machine Learning On-Device.
  */
 data class WirelessSignal(
     val type: SignalType,
@@ -76,16 +77,57 @@ data class WirelessSignal(
             })
         }
     }
+
+    /**
+     * Konversi baris data terpadu untuk file CSV:
+     * Format: Timestamp,Latitude,Longitude,GPS_Accuracy,Signal_Type,Device_ID,Device_Name,Signal_Strength
+     */
+    fun toCsvRow(): String {
+        val cleanName = (ssid ?: "").replace(",", " ").replace("\n", " ").replace("\r", " ").trim()
+        val signalStrength = when (type) {
+            SignalType.CELLULAR -> rsrp ?: ssRsrp ?: rssi
+            else -> rssi
+        }
+        val typeStr = when (type) {
+            SignalType.WIFI -> "WiFi"
+            SignalType.BLE -> "BLE"
+            SignalType.CELLULAR -> "BTS"
+        }
+        val deviceId = when (type) {
+            SignalType.CELLULAR -> cellId?.takeIf { it != -1L }?.toString() ?: bssid
+            else -> bssid
+        }
+        val lat = location?.latitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
+        val lng = location?.longitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
+        val acc = location?.accuracyMeters?.let { String.format(Locale.US, "%.2f", it) } ?: ""
+
+        return "$timestampMs,$lat,$lng,$acc,$typeStr,$deviceId,$cleanName,$signalStrength"
+    }
 }
 
 /**
- * Agregasi snapshot data untuk feed Machine Learning.
+ * Agregasi snapshot data untuk export CSV atau feed Machine Learning.
  */
 data class WirelessSnapshot(
     val snapshotTimestamp: Long,
     val location: GpsCoordinate?,
     val signals: List<WirelessSignal>
 ) {
+    companion object {
+        const val CSV_HEADER = "Timestamp,Latitude,Longitude,GPS_Accuracy,Signal_Type,Device_ID,Device_Name,Signal_Strength"
+    }
+
+    fun toCsv(includeHeader: Boolean = true): String {
+        val sb = StringBuilder()
+        if (includeHeader) {
+            sb.append(CSV_HEADER).append("\n")
+        }
+        signals.forEach { signal ->
+            sb.append(signal.toCsvRow()).append("\n")
+        }
+        return sb.toString()
+    }
+
     fun toJson(): String {
         val root = JSONObject().apply {
             put("snapshot_timestamp", snapshotTimestamp)
@@ -100,9 +142,6 @@ data class WirelessSnapshot(
     /**
      * Mengubah data snapshot menjadi feature vector float 1D ternormalisasi
      * untuk model On-Device Machine Learning (TFLite / ONNX Runtime).
-     *
-     * @param featureBssids Kamus/dimensi identifier (BSSID / Cell Key) yang dikenal oleh model
-     * @param defaultMissingRssi Nilai default untuk sinyal yang tidak terlihat (-100 dBm)
      */
     fun toNormalizedRssiVector(
         featureBssids: List<String>,

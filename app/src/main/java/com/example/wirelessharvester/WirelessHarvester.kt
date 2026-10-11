@@ -460,6 +460,21 @@ class WirelessHarvester(private val context: Context) {
         return jsonArray.toString()
     }
 
+    /**
+     * Mengekspor seluruh snapshot yang telah dipanen ke dalam format CSV String terpadu:
+     * Header: Timestamp,Latitude,Longitude,GPS_Accuracy,Signal_Type,Device_ID,Device_Name,Signal_Strength
+     */
+    fun exportSnapshotsToCsv(): String {
+        val sb = StringBuilder()
+        sb.append(WirelessSnapshot.CSV_HEADER).append("\n")
+        historicalSnapshots.forEach { snapshot ->
+            snapshot.signals.forEach { signal ->
+                sb.append(signal.toCsvRow()).append("\n")
+            }
+        }
+        return sb.toString()
+    }
+
     fun getHistoricalSnapshots(): List<WirelessSnapshot> = historicalSnapshots.toList()
 
     fun getActiveSignalsCount(): Triple<Int, Int, Int> {
