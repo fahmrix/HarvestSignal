@@ -1,20 +1,24 @@
-name: Build Android APK
+name: Build Android APK & Publish Release
 
 on:
   push:
     branches:
       - main
       - master
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
       - master
-  # Mengizinkan build manual melalui tombol "Run workflow" di GitHub Actions UI
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build & Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -22,7 +26,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Setup JDK 17 (Standar untuk modern Android Gradle Plugin 8.x+)
+      # 2. Setup JDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -38,10 +42,46 @@ jobs:
       - name: Build Debug APK with Gradle
         run: ./gradlew assembleDebug --stacktrace
 
-      # 5. Upload hasil APK ke GitHub Actions Artifacts agar bisa langsung diunduh
+      # 5. Siapkan nama file APK yang rapi
+      - name: Prepare APK Release File
+        run: |
+          mkdir -p release-apk
+          cp app/build/outputs/apk/debug/*.apk release-apk/WirelessHarvester.apk
+
+      # 6. Upload ke GitHub Actions Artifacts (Backup)
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: wireless-harvester-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: release-apk/WirelessHarvester.apk
           retention-days: 14
+
+      # 7. Publikasikan langsung ke halaman GitHub Releases
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && format('Release {0}', github.ref_name) || 'Wireless Harvester APK (v1.0.0)' }}
+          body: |
+            ## Wireless Threat Hunting & Localization Tool (Hybrid Trilateration) 📡
+
+            File APK siap pakai untuk pengumpulan data nirkabel hybrid (*Centralized CTI Data Collector*).
+
+            ### Fitur Utama:
+            - **Trilaterasi Multi-Sinyal**: Wi-Fi, Bluetooth Low Energy (BLE), dan BTS Seluler (4G LTE / 5G NR / GSM / WCDMA).
+            - **Ekspor CSV Terpadu**:
+              `Timestamp,Latitude,Longitude,GPS_Accuracy,Signal_Type,Device_ID,Device_Name,Signal_Strength`
+            - **Ekspor JSON & Normalisasi ML**
+            - **Berbagi File Instan**: Kirim file hasil panen via Share Sheet ke WhatsApp, Google Drive, Telegram, Email, dll.
+
+            ### Cara Instalasi:
+            1. Unduh file **`WirelessHarvester.apk`** di bagian bawah (Assets).
+            2. Buka file di ponsel Android Anda dan pilih **Install**.
+            3. Berikan izin Lokasi, Telepon, dan Bluetooth saat aplikasi pertama kali dibuka.
+            4. *(Opsional)* Matikan **"Wi-Fi scan throttling"** di Developer Options ponsel untuk performa scan maksimal.
+          files: release-apk/WirelessHarvester.apk
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
