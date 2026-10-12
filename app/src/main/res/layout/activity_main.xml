@@ -73,6 +73,55 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- Animated Signal Radar -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
+        android:layout_height="190dp"
+        android:layout_marginTop="12dp"
+        app:cardBackgroundColor="#03101D"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        app:strokeColor="#164E63"
+        app:strokeWidth="1dp">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <com.example.wirelessharvester.RadarView
+                android:id="@+id/radarView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/radar_content_description"
+                android:importantForAccessibility="yes" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:layout_margin="12dp"
+                android:background="#B303101D"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:text="@string/radar_title"
+                android:textColor="#5EEAD4"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="12dp"
+                android:background="#B303101D"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:text="@string/radar_legend"
+                android:textColor="#CBD5E1"
+                android:textSize="10sp" />
+        </FrameLayout>
+    </com.google.android.material.card.MaterialCardView>
+
     <!-- Buttons Grid -->
     <LinearLayout
         android:layout_width="match_parent"

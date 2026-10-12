@@ -7,4 +7,7 @@
     <string name="status_idle">Status: Siaga (Idle)</string>
     <string name="status_harvesting">Status: Memanen Data Sinyal Aktif...</string>
     <string name="gps_placeholder">GPS: Menunggu sinyal satelit...</string>
+    <string name="radar_title">LIVE SIGNAL RADAR</string>
+    <string name="radar_legend">Wi-Fi • BLE • BTS</string>
+    <string name="radar_content_description">Radar sinyal, belum ada perangkat terdeteksi</string>
 </resources>

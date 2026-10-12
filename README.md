@@ -8,20 +8,25 @@ Dalam dunia keamanan siber, aplikasi taktis seperti ini sering disebut sebagai *
 
 ## Fitur Utama
 
-1. **Trilaterasi Multi-Sinyal (Hybrid Multi-Source RF)**:
+1. **Radar Deteksi Sinyal Animasi**:
+   - Sapuan radar 360 derajat berjalan secara real-time selama pemindaian aktif.
+   - Blip dibedakan berdasarkan sumber: Wi-Fi (cyan), BLE (ungu), dan BTS (kuning).
+   - Posisi radial memvisualisasikan kekuatan sinyal; sinyal yang lebih kuat tampil lebih dekat ke pusat.
+   - Sinyal lama memudar otomatis agar tampilan tetap fokus pada perangkat yang masih aktif.
+2. **Trilaterasi Multi-Sinyal (Hybrid Multi-Source RF)**:
    - **BTS Seluler (Telephony)**: Memanen data multi-menara sekaligus (*Serving Cell* dan *Neighboring Cells*) untuk jaringan 4G LTE, 5G NR (New Radio), 3G WCDMA, dan 2G GSM.
    - **Wi-Fi Scanning**: Loop pemindaian frekuensi Wi-Fi agresif (2.4 GHz, 5 GHz, 6 GHz).
    - **Bluetooth Low Energy (BLE)**: Mode `SCAN_MODE_LOW_LATENCY` dan `setReportDelay(0)` (continuous duty cycle 100% tanpa sleep cycle) untuk menangkap paket advertisement beacon instan.
-2. **Metrik Kualitas Sinyal Mendalam**:
+3. **Metrik Kualitas Sinyal Mendalam**:
    - **Seluler (LTE/5G)**: Cell ID (CI/NCI), TAC/LAC, MCC, MNC, PCI, RSRP (dBm), RSRQ (dB), CQI, SS-RSRP, SS-RSRQ, dan SS-SINR.
    - **Wi-Fi & BLE**: SSID, BSSID (MAC Address), RSSI (dBm), frekuensi kanal (MHz).
    - **Status Koneksi**: Penanda otomatis BTS *Registered* (terhubung aktif) vs *Unregistered* (tetangga sekitar).
-3. **Wi-Fi Scan Throttling Bypass**:
+4. **Wi-Fi Scan Throttling Bypass**:
    - Kompatibel dan optimal jika pembatasan pemindaian dinonaktifkan di Developer Options ponsel.
-4. **On-Device Machine Learning Pipeline Ready**:
+5. **On-Device Machine Learning Pipeline Ready**:
    - Struktur data JSON seragam di mana semua sinyal berbagi timestamp dan koordinat GPS yang sama per snapshot.
    - Fungsi konversi otomatis ke 1D FloatArray Feature Vector (`toNormalizedRssiVector`) dengan min-max scaling (-100 dBm s/d 0 dBm $\rightarrow$ 0.0 s/d 1.0).
-5. **Pencatatan Data Mentah & Ekspor Terpadu (CSV & JSON)**:
+6. **Pencatatan Data Mentah & Ekspor Terpadu (CSV & JSON)**:
    - **Format Kolom CSV Terpadu**:
      `Timestamp,Latitude,Longitude,GPS_Accuracy,Signal_Type,Device_ID,Device_Name,Signal_Strength`
      - `Signal_Type`: `WiFi`, `BLE`, atau `BTS`
@@ -29,9 +34,9 @@ Dalam dunia keamanan siber, aplikasi taktis seperti ini sering disebut sebagai *
      - `Device_Name`: SSID Wi-Fi, Nama Beacon BLE, atau Nama Operator Seluler
      - `Signal_Strength`: RSSI / RSRP dalam dBm
    - Simpan dataset hasil panen langsung ke file `.csv` atau `.json` di penyimpanan lokal ponsel dan bagikan via Share Sheet bawaan ponsel (WhatsApp, Google Drive, Email, Bluetooth, dll).
-6. **Penanganan Izin Runtime Lengkap**:
+7. **Penanganan Izin Runtime Lengkap**:
    - Kompatibel dari Android 8.0 (API 26) hingga Android 14+ (API 34): `READ_PHONE_STATE`, `ACCESS_FINE_LOCATION`, `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, dan `ACCESS_WIFI_STATE`.
-7. **Automated GitHub Actions CI/CD**:
+8. **Automated GitHub Actions CI/CD**:
    - Terintegrasi workflow `.github/workflows/build-apk.yml` yang otomatis mengompilasi proyek menjadi APK siap pakai di tab GitHub Artifacts.
 
 ---
@@ -83,7 +88,7 @@ r/
    git remote add origin https://github.com/USERNAME/REPO_NAME.git
    git push -u origin main
    ```
-2. Buka tab **Actions** di repositori GitHub Anda: `https://github.com/USERNAME/REPO_NAME/actions`.
+2. Buka tab **Actions** di repositori GitHub Anda: `https://github.com/fahmrix/HarvestSignal/actions`.
 3. Workflow **"Build Android APK"** akan berjalan otomatis.
 4. Setelah selesai (centang hijau), klik run tersebut dan unduh APK dari bagian **Artifacts** (`wireless-harvester-debug-apk`).
 

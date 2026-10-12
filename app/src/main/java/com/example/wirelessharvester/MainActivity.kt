@@ -33,6 +33,7 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
     private lateinit var btnProcessMl: Button
     private lateinit var btnShareFile: Button
     private lateinit var btnShareCsv: Button
+    private lateinit var radarView: RadarView
 
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
@@ -101,6 +102,7 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
         btnProcessMl = findViewById(R.id.btnProcessMl)
         btnShareFile = findViewById(R.id.btnShareFile)
         btnShareCsv = findViewById(R.id.btnShareCsv)
+        radarView = findViewById(R.id.radarView)
     }
 
     private fun saveAndShareFile() {
@@ -194,6 +196,7 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
     private fun startHarvestingProcess() {
         try {
             harvester.startHarvesting()
+            radarView.setScanning(true)
             tvStatus.text = "Status: Memanen Data Sinyal Aktif..."
             tvStatus.setTextColor(0xFF00E676.toInt()) // Hijau
             appendLog("[Started] Pemanenan nirkabel (Wi-Fi & BLE) dimulai.")
@@ -205,6 +208,7 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
 
     private fun stopHarvestingProcess() {
         harvester.stopHarvesting()
+        radarView.setScanning(false)
         tvStatus.text = "Status: Siaga (Dihentikan)"
         tvStatus.setTextColor(0xFF38BDF8.toInt()) // Biru
         appendLog("[Stopped] Pemanenan data dihentikan.")
@@ -241,17 +245,20 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
     }
 
     override fun onSignalCaptured(signal: WirelessSignal, totalWifi: Int, totalBle: Int, totalCellular: Int) {
-        tvSignalCounter.text = "Sinyal: Wi-Fi: $totalWifi | BLE: $totalBle | BTS: $totalCellular | Total: ${totalWifi + totalBle + totalCellular}"
-        val time = timeFormat.format(Date(signal.timestampMs))
-        val locStr = signal.location?.let { String.format(Locale.US, " (Lat: %.5f, Lng: %.5f)", it.latitude, it.longitude) } ?: ""
+        runOnUiThread {
+            radarView.submitSignal(signal)
+            tvSignalCounter.text = "Sinyal: Wi-Fi: $totalWifi | BLE: $totalBle | BTS: $totalCellular | Total: ${totalWifi + totalBle + totalCellular}"
+            val time = timeFormat.format(Date(signal.timestampMs))
+            val locStr = signal.location?.let { String.format(Locale.US, " (Lat: %.5f, Lng: %.5f)", it.latitude, it.longitude) } ?: ""
 
-        val info = if (signal.type == com.example.wirelessharvester.data.SignalType.CELLULAR) {
-            val cellDetail = "[${signal.radioType}] [${signal.connectionStatus}] CI:${signal.cellId ?: "N/A"} TAC:${signal.tacOrLac ?: "N/A"} | RSRP:${signal.rsrp ?: signal.ssRsrp ?: signal.rssi}dBm"
-            "[$time] [BTS] ${signal.ssid} | $cellDetail$locStr"
-        } else {
-            "[$time] [${signal.type}] ${signal.ssid ?: "<hidden>"} | ${signal.bssid} | ${signal.rssi} dBm$locStr"
+            val info = if (signal.type == com.example.wirelessharvester.data.SignalType.CELLULAR) {
+                val cellDetail = "[${signal.radioType}] [${signal.connectionStatus}] CI:${signal.cellId ?: "N/A"} TAC:${signal.tacOrLac ?: "N/A"} | RSRP:${signal.rsrp ?: signal.ssRsrp ?: signal.rssi}dBm"
+                "[$time] [BTS] ${signal.ssid} | $cellDetail$locStr"
+            } else {
+                "[$time] [${signal.type}] ${signal.ssid ?: "<hidden>"} | ${signal.bssid} | ${signal.rssi} dBm$locStr"
+            }
+            appendLog(info)
         }
-        appendLog(info)
     }
 
     @SuppressLint("SetTextI18n")
@@ -271,7 +278,8 @@ class MainActivity : AppCompatActivity(), WirelessHarvester.HarvesterListener {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        radarView.setScanning(false)
         harvester.stopHarvesting()
+        super.onDestroy()
     }
 }
